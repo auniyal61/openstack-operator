@@ -12,6 +12,7 @@ import (
 	"github.com/openstack-k8s-operators/lib-common/modules/common/helper"
 	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	corev1beta1 "github.com/openstack-k8s-operators/openstack-operator/apis/core/v1beta1"
@@ -27,6 +28,50 @@ const (
 	galeraCreating galeraStatus = iota
 	galeraReady    galeraStatus = iota
 )
+
+func findToDeleteGalera(
+	ctx context.Context,
+	instance *corev1beta1.OpenStackControlPlane,
+	helper *helper.Helper,
+) (mariadbv1.GaleraList, error) {
+
+	Log := GetLogger(ctx)
+	toDeleteList := &mariadbv1.GaleraList{}
+	// Fetch the list of Galera objects
+	galeraList := &mariadbv1.GaleraList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(instance.GetNamespace()),
+	}
+	err := helper.GetClient().List(ctx, galeraList, listOpts...)
+	if err != nil {
+		Log.Error(err, "Could not get galeras.")
+		return *toDeleteList, err
+	}
+
+	// Extract CR-Galera and Template-Galera names
+	crGaleras := make(map[string]struct{})
+	templateGaleraMap := make(map[string]struct{})
+
+	for _, galeraObj := range galeraList.Items {
+		crGaleras[galeraObj.Name] = struct{}{}
+	}
+
+	for name := range *instance.Spec.Galera.Templates {
+		templateGaleraMap[name] = struct{}{}
+	}
+
+	Log.Info("CR Galeras", "", fmt.Sprintf("%s", crGaleras))
+	Log.Info("Template Galeras", "", fmt.Sprintf("%s", templateGaleraMap))
+
+	for _, galeraObj := range galeraList.Items {
+		// if not in templateGalera-CR, delete from DB
+		if _, exists := templateGaleraMap[galeraObj.Name]; !exists {
+			toDeleteList.Items = append(toDeleteList.Items, galeraObj)
+		}
+	}
+
+	return *toDeleteList, nil
+}
 
 // ReconcileGaleras -
 func ReconcileGaleras(
@@ -46,6 +91,20 @@ func ReconcileGaleras(
 
 	if instance.Spec.Galera.Templates == nil {
 		instance.Spec.Galera.Templates = ptr.To(map[string]mariadbv1.GaleraSpecCore{})
+	}
+
+	toDeleteGaleras, err := findToDeleteGalera(ctx, instance, helper)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if len(toDeleteGaleras.Items) > 0 {
+		for _, galeraObj := range toDeleteGaleras.Items {
+			Log.Info("Deleting Galera for cell", "", galeraObj.Name)
+			if _, err := EnsureDeleted(ctx, helper, &galeraObj); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	for name, spec := range *instance.Spec.Galera.Templates {

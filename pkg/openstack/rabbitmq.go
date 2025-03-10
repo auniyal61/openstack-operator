@@ -16,6 +16,7 @@ import (
 	// Error: 	pkg/openstack/rabbitmq.go:10:2: use of internal package github.com/rabbitmq/cluster-operator/internal/status not allowed
 	//rabbitstatus "github.com/rabbitmq/cluster-operator/internal/status"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	corev1beta1 "github.com/openstack-k8s-operators/openstack-operator/apis/core/v1beta1"
@@ -38,6 +39,50 @@ const (
 	mqReady    mqStatus = iota
 )
 
+func findToDeleteRabbitMQs(
+	ctx context.Context,
+	instance *corev1beta1.OpenStackControlPlane,
+	helper *helper.Helper,
+) (rabbitmqv1.RabbitMqList, error) {
+
+	Log := GetLogger(ctx)
+	toDeleteList := &rabbitmqv1.RabbitMqList{}
+	// Fetch the list of RabbitMQ objects
+	rabbitList := &rabbitmqv1.RabbitMqList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(instance.GetNamespace()),
+	}
+	err := helper.GetClient().List(ctx, rabbitList, listOpts...)
+	if err != nil {
+		Log.Error(err, "Could not get Rabbitmqs.")
+		return *toDeleteList, err
+	}
+
+	// Extract CR-Rabbit and Template-Rabbit names
+	crRabbitMQs := make(map[string]struct{})
+	templateRabbitsMap := make(map[string]struct{})
+
+	for _, rabbitObj := range rabbitList.Items {
+		crRabbitMQs[rabbitObj.Name] = struct{}{}
+	}
+
+	for name := range *instance.Spec.Rabbitmq.Templates {
+		templateRabbitsMap[name] = struct{}{}
+	}
+
+	Log.Info("", "CR Rabbits", fmt.Sprintf("%s", crRabbitMQs))
+	Log.Info("", "Template Rabbits", fmt.Sprintf("%s", templateRabbitsMap))
+
+	for _, rabbitObj := range rabbitList.Items {
+		// if not in templateRabbit-CR, delete from DB
+		if _, exists := templateRabbitsMap[rabbitObj.Name]; !exists {
+			toDeleteList.Items = append(toDeleteList.Items, rabbitObj)
+		}
+	}
+
+	return *toDeleteList, nil
+}
+
 // ReconcileRabbitMQs -
 func ReconcileRabbitMQs(
 	ctx context.Context,
@@ -51,8 +96,24 @@ func ReconcileRabbitMQs(
 	var err error
 	var status mqStatus
 
+	Log := GetLogger(ctx)
+
 	if instance.Spec.Rabbitmq.Templates == nil {
 		instance.Spec.Rabbitmq.Templates = ptr.To(map[string]rabbitmqv1.RabbitMqSpecCore{})
+	}
+
+	toDeleteRabbitMQs, err := findToDeleteRabbitMQs(ctx, instance, helper)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	if len(toDeleteRabbitMQs.Items) > 0 {
+		for _, rabbitObj := range toDeleteRabbitMQs.Items {
+			Log.Info("Deleting Rabbitmq for cell", "", rabbitObj.Name)
+			if _, err := EnsureDeleted(ctx, helper, &rabbitObj); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	for name, spec := range *instance.Spec.Rabbitmq.Templates {
