@@ -21,11 +21,10 @@ require (
 	github.com/openstack-k8s-operators/manila-operator/api v0.6.1-0.20260415214016-523bbc811363
 	github.com/openstack-k8s-operators/mariadb-operator/api v0.6.1-0.20260413152655-564a51226a2a
 	github.com/openstack-k8s-operators/neutron-operator/api v0.6.1-0.20260415055437-26247a82c50b
-	github.com/openstack-k8s-operators/nova-operator/api v0.6.1-0.20260413153813-b59b2a226c10
+	github.com/openstack-k8s-operators/nova-operator/api v0.6.1-0.20260415060735-b54a701efcaf
 	github.com/openstack-k8s-operators/octavia-operator/api v0.6.1-0.20260413082059-d107b5bac378
 	github.com/openstack-k8s-operators/openstack-baremetal-operator/api v0.6.1-0.20260413094947-83f411fa655c
 	github.com/openstack-k8s-operators/ovn-operator/api v0.6.1-0.20260416085208-12e49450bfee
-	github.com/openstack-k8s-operators/placement-operator/api v0.6.1-0.20260413090520-f18a11875c1d
 	github.com/openstack-k8s-operators/swift-operator/api v0.6.1-0.20260417111649-93dc093e3da1
 	github.com/openstack-k8s-operators/telemetry-operator/api v0.6.1-0.20260413103111-95e126b47f76
 	github.com/openstack-k8s-operators/watcher-operator/api v0.6.1-0.20260414124111-458e17672b3c
@@ -142,3 +141,5 @@ replace k8s.io/code-generator => k8s.io/code-generator v0.31.14 //allow-merging
 replace k8s.io/component-base => k8s.io/component-base v0.31.14 //allow-merging
 
 replace github.com/cert-manager/cmctl/v2 => github.com/cert-manager/cmctl/v2 v2.1.2-0.20241127223932-88edb96860cf //allow-merging
+
+replace github.com/openstack-k8s-operators/nova-operator/api => github.com/auniyal61/nova-operator/api v0.0.0-20260415060735-b54a701efcaf //allow-merging
